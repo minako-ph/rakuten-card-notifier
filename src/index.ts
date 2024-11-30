@@ -1,7 +1,7 @@
-import { main } from "./main";
+import { triggerFunction } from "./main";
 
 declare const global: {
   [x: string]: unknown;
 };
 
-global.main = main;
+global.triggerFunction = triggerFunction;
