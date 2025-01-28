@@ -21,8 +21,8 @@ export const processEmails = () => {
 
   const indexMap = getColumnIndexMap(sheet)
 
-  const newEntries: any[] = []
-  const updatedEntries: any[] = []
+  const notificationEntries: any[] = []
+  const confirmedEntries: any[] = []
 
   // 速報版メールの処理
   notificationThreads.forEach((thread) => {
@@ -32,7 +32,7 @@ export const processEmails = () => {
       const date = extractDate(body)
       const amount = extractAmount(body)
 
-      newEntries.push({ date, amount })
+      notificationEntries.push({ date, amount })
       appendRow(sheet, [date, '', amount])
     })
 
@@ -51,10 +51,8 @@ export const processEmails = () => {
       const place = extractPlace(body)
 
       const updated = updateConfirmedRow(sheet, date, amount, place, indexMap)
-      if (updated) {
-        updatedEntries.push({ date, amount, place })
-      } else {
-        newEntries.push({ date, amount, place })
+      confirmedEntries.push({ date, amount, place })
+      if (!updated) {
         appendRow(sheet, [date, place, amount])
       }
     })
@@ -64,7 +62,7 @@ export const processEmails = () => {
   })
 
   const totalAmount = calculateTotal(sheet, indexMap)
-  sendNotificationToLine(newEntries, updatedEntries, totalAmount)
+  sendNotificationToLine(notificationEntries, confirmedEntries, totalAmount)
 }
 
 /**
@@ -117,10 +115,21 @@ const updateConfirmedRow = (
   indexMap: Record<string, number>,
 ): boolean => {
   const data = sheet.getDataRange().getValues()
+
   for (let i = 1; i < data.length; i++) {
+    // 日付をISO形式（YYYY-MM-DD）に統一
+    const sheetDate = new Date(data[i][indexMap['利用日']])
+      .toISOString()
+      .split('T')[0]
+    const targetDate = new Date(date).toISOString().split('T')[0]
+
+    // 金額を文字列に統一
+    const sheetAmount = String(data[i][indexMap['利用金額']])
+    const targetAmount = String(amount)
+
     if (
-      data[i][indexMap['利用日']] === date &&
-      data[i][indexMap['利用金額']] === amount &&
+      sheetDate === targetDate &&
+      sheetAmount === targetAmount &&
       !data[i][indexMap['利用先']]
     ) {
       sheet.getRange(i + 1, indexMap['利用先'] + 1).setValue(place)
@@ -142,11 +151,7 @@ const calculateTotal = (
   return data.slice(1).reduce((sum, row) => {
     const date = new Date(row[indexMap['利用日']])
     if (date.getMonth() + 1 === currentMonth) {
-      const amount = parseInt(
-        row[indexMap['利用金額']].replace(/,/g, '').replace('円', ''),
-        10,
-      )
-      return sum + amount
+      return sum + row[indexMap['利用金額']]
     }
     return sum
   }, 0)
@@ -156,8 +161,8 @@ const calculateTotal = (
  * LINE通知を送信
  */
 const sendNotificationToLine = (
-  newEntries: any[],
-  updatedEntries: any[],
+  notificationEntries: any[],
+  confirmedEntries: any[],
   totalAmount: number,
 ) => {
   const flexContents = {
@@ -171,6 +176,7 @@ const sendNotificationToLine = (
           text: '今日時点の楽天カード利用金額通知',
           weight: 'bold',
           size: 'md',
+          margin: 'none',
         },
         {
           type: 'separator',
@@ -185,7 +191,7 @@ const sendNotificationToLine = (
         {
           type: 'box',
           layout: 'vertical',
-          contents: newEntries.map((entry) => ({
+          contents: notificationEntries.map((entry) => ({
             type: 'box',
             layout: 'horizontal',
             contents: [
@@ -193,6 +199,7 @@ const sendNotificationToLine = (
               { type: 'text', text: `${entry.amount} 円`, align: 'end' },
             ],
           })),
+          margin: 'md',
         },
         {
           type: 'text',
@@ -218,51 +225,67 @@ const sendNotificationToLine = (
           contents: [
             {
               type: 'box',
-              layout: 'horizontal',
+              layout: 'vertical',
               contents: [
                 {
-                  type: 'text',
-                  text: '30万円の場合',
-                  margin: 'sm',
-                  weight: 'bold',
-                  size: 'sm',
+                  type: 'box',
+                  layout: 'horizontal',
+                  contents: [
+                    {
+                      type: 'text',
+                      text: '30万円の場合',
+                      margin: 'sm',
+                      weight: 'bold',
+                      size: 'sm',
+                    },
+                    {
+                      type: 'text',
+                      text: `${Math.round((totalAmount / 300000) * 100)}% 消化済み`,
+                      align: 'end',
+                    },
+                  ],
                 },
                 {
                   type: 'text',
-                  text: `${Math.round((totalAmount / 300000) * 100)}% 消化済み`,
+                  text: `残 ${300000 - totalAmount} 円`,
                   align: 'end',
                 },
               ],
-            },
-            {
-              type: 'text',
-              text: `残 ${300000 - totalAmount} 円`,
-              align: 'end',
+              spacing: 'sm',
+              margin: 'sm',
             },
             {
               type: 'box',
-              layout: 'horizontal',
+              layout: 'vertical',
               contents: [
                 {
-                  type: 'text',
-                  text: '40万円の場合',
-                  margin: 'sm',
-                  weight: 'bold',
-                  size: 'sm',
+                  type: 'box',
+                  layout: 'horizontal',
+                  contents: [
+                    {
+                      type: 'text',
+                      text: '40万円の場合',
+                      margin: 'sm',
+                      weight: 'bold',
+                      size: 'sm',
+                    },
+                    {
+                      type: 'text',
+                      text: `${Math.round((totalAmount / 400000) * 100)}% 消化済み`,
+                      align: 'end',
+                    },
+                  ],
                 },
                 {
                   type: 'text',
-                  text: `${Math.round((totalAmount / 400000) * 100)}% 消化済み`,
+                  text: `残 ${400000 - totalAmount} 円`,
                   align: 'end',
                 },
               ],
             },
-            {
-              type: 'text',
-              text: `残 ${400000 - totalAmount} 円`,
-              align: 'end',
-            },
           ],
+          margin: 'md',
+          spacing: 'sm',
         },
         {
           type: 'separator',
@@ -277,7 +300,7 @@ const sendNotificationToLine = (
         {
           type: 'box',
           layout: 'vertical',
-          contents: updatedEntries.map((entry) => ({
+          contents: confirmedEntries.map((entry) => ({
             type: 'box',
             layout: 'vertical',
             contents: [
@@ -289,9 +312,15 @@ const sendNotificationToLine = (
                   { type: 'text', text: `${entry.amount} 円`, align: 'end' },
                 ],
               },
-              { type: 'text', text: entry.place },
+              {
+                type: 'text',
+                text: entry.place,
+                align: 'end',
+              },
             ],
           })),
+          margin: 'sm',
+          spacing: 'sm',
         },
       ],
     },
