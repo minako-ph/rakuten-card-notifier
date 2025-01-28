@@ -201,7 +201,11 @@ const sendNotificationToLine = (
             layout: 'horizontal',
             contents: [
               { type: 'text', text: entry.date },
-              { type: 'text', text: `${entry.amount} 円`, align: 'end' },
+              {
+                type: 'text',
+                text: `${entry.amount.toLocaleString()} 円`,
+                align: 'end',
+              },
             ],
           })),
           margin: 'md',
@@ -214,7 +218,7 @@ const sendNotificationToLine = (
         },
         {
           type: 'text',
-          text: `${totalAmount} 円`,
+          text: `${totalAmount.toLocaleString()} 円`,
           align: 'end',
           margin: 'md',
         },
@@ -245,14 +249,14 @@ const sendNotificationToLine = (
                     },
                     {
                       type: 'text',
-                      text: `${Math.round((totalAmount / 300000) * 100)}% 消化済み`,
+                      text: `${Math.round((totalAmount / 300000) * 100).toLocaleString()}% 消化済み`,
                       align: 'end',
                     },
                   ],
                 },
                 {
                   type: 'text',
-                  text: `残 ${300000 - totalAmount} 円`,
+                  text: `残 ${(300000 - totalAmount).toLocaleString()} 円`,
                   align: 'end',
                 },
               ],
@@ -276,14 +280,14 @@ const sendNotificationToLine = (
                     },
                     {
                       type: 'text',
-                      text: `${Math.round((totalAmount / 400000) * 100)}% 消化済み`,
+                      text: `${Math.round((totalAmount / 400000) * 100).toLocaleString()}% 消化済み`,
                       align: 'end',
                     },
                   ],
                 },
                 {
                   type: 'text',
-                  text: `残 ${400000 - totalAmount} 円`,
+                  text: `残 ${(400000 - totalAmount).toLocaleString()} 円`,
                   align: 'end',
                 },
               ],
@@ -314,7 +318,11 @@ const sendNotificationToLine = (
                 layout: 'horizontal',
                 contents: [
                   { type: 'text', text: entry.date },
-                  { type: 'text', text: `${entry.amount} 円`, align: 'end' },
+                  {
+                    type: 'text',
+                    text: `${entry.amount.toLocaleString()} 円`,
+                    align: 'end',
+                  },
                 ],
               },
               {
