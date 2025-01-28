@@ -29,11 +29,11 @@ export const processEmails = () => {
     const messages = thread.getMessages()
     messages.forEach((message) => {
       const body = message.getPlainBody()
-      const date = extractDate(body)
-      const amount = extractAmount(body)
-
-      notificationEntries.push({ date, amount })
-      appendRow(sheet, [date, '', amount])
+      const details = parseEmailBodyForDetails(body, false) // 明細をすべて抽出
+      details.forEach(({ date, amount }) => {
+        appendRow(sheet, [date, '', amount])
+        notificationEntries.push({ date, amount })
+      })
     })
 
     // スレッドにラベルを追加
@@ -42,19 +42,17 @@ export const processEmails = () => {
 
   // 確定版メールの処理
   confirmedThreads.forEach((thread) => {
-    // メッセージを取得し、古い順にソート
     const messages = thread.getMessages()
     messages.forEach((message) => {
       const body = message.getPlainBody()
-      const date = extractDate(body)
-      const amount = extractAmount(body)
-      const place = extractPlace(body)
-
-      const updated = updateConfirmedRow(sheet, date, amount, place, indexMap)
-      confirmedEntries.push({ date, amount, place })
-      if (!updated) {
-        appendRow(sheet, [date, place, amount])
-      }
+      const details = parseEmailBodyForDetails(body, true) // 明細をすべて抽出
+      details.forEach(({ date, amount, place }) => {
+        const updated = updateConfirmedRow(sheet, date, amount, place, indexMap)
+        if (!updated) {
+          appendRow(sheet, [date, place, amount])
+        }
+        confirmedEntries.push({ date, amount, place })
+      })
     })
 
     // スレッドにラベルを追加
@@ -66,34 +64,41 @@ export const processEmails = () => {
 }
 
 /**
- * メール本文から利用日を抽出
- * @param body メール本文
- * @returns 利用日（YYYY/MM/DD形式）または空文字列
+ * メール本文を解析して利用明細を抽出する関数
  */
-const extractDate = (body: string): string => {
-  const match = body.match(/利用日:\s*(\d{4}\/\d{2}\/\d{2})/)
-  return match ? match[1] : ''
-}
-
-/**
- * メール本文から利用金額を抽出
- * @param body メール本文
- * @returns 利用金額（カンマを除去した数値文字列）または空文字列
- */
-const extractAmount = (body: string): string => {
-  const match = body.match(/利用金額:\s*([\d,]+)/)
-  return match ? match[1].replace(/,/g, '') : ''
-}
-
-/**
- * メール本文から利用先を抽出
- * @param body ISO-2022-JPでエンコードされたメール本文
- * @returns 利用先または「不明」
- */
-const extractPlace = (body: string): string => {
+const parseEmailBodyForDetails = (
+  body: string,
+  confirmed: boolean,
+): { date: string; amount: string; place: string }[] => {
+  // 本文のデコード（ISO-2022-JP対応）
   const decodedBody = decodeISO2022JP(body)
-  const match = decodedBody.match(/利用先:\s*([^\n\r]+)/)
-  return match ? match[1].trim() : '不明'
+
+  const details: { date: string; amount: string; place: string }[] = []
+  let detailBlockRegex: RegExp
+
+  // 速報版と確定版で正規表現を切り替える
+  if (confirmed) {
+    // 確定版メール用の正規表現
+    detailBlockRegex =
+      /■利用日:\s*(\d{4}\/\d{2}\/\d{2})[\s\S]*?■利用先:\s*(.+?)[\s\S]*?■利用金額:\s*([\d,]+)\s*円/g
+  } else {
+    // 速報版メール用の正規表現
+    detailBlockRegex =
+      /■利用日:\s*(\d{4}\/\d{2}\/\d{2})[\s\S]*?■利用金額:\s*([\d,]+)\s*円/g
+  }
+
+  let match: RegExpExecArray | null
+
+  // 明細の塊を解析
+  while ((match = detailBlockRegex.exec(decodedBody)) !== null) {
+    const date = match[1]
+    const amount = match[confirmed ? 3 : 2].replace(/,/g, '') // カンマを削除して数値化
+    const place = confirmed ? match[2].trim() : '' // 確定版のみ利用先を設定
+
+    details.push({ date, amount, place })
+  }
+
+  return details
 }
 
 /**
