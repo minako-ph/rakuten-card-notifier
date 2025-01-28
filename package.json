@@ -1,5 +1,5 @@
 {
-  "name": "clasp-ts-template",
+  "name": "rakuten-card-notification",
   "version": "1.0.0",
   "main": "index.js",
   "license": "MIT",
@@ -15,19 +15,12 @@
     "@babel/core": "^7.26.0",
     "@babel/preset-typescript": "^7.26.0",
     "@google/clasp": "^2.4.2",
-    "@types/babel__core": "^7.20.5",
-    "@types/google-apps-script": "^1.0.85",
-    "@types/prettier": "^3.0.0",
+    "@types/google-apps-script": "^1.0.91",
     "babel-loader": "^9.2.1",
     "gas-webpack-plugin": "^2.6.0",
     "typescript": "^5.7.2",
-    "typesync": "^0.12.1",
     "webpack": "^5.96.1",
     "webpack-cli": "^5.1.4"
   },
-  "dependencies": {
-    "@line/bot-sdk": "^9.5.0",
-    "prettier": "^2.8.0"
-  },
-  "packageManager": "yarn@1.22.19+sha1.4ba7fc5c6e704fce2066ecbfb0b0d8976fe62447"
+  "packageManager": "yarn@1.22.19"
 }
