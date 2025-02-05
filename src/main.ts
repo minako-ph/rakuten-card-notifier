@@ -184,7 +184,7 @@ const sendNotificationToLine = (
       contents: [
         {
           type: 'text',
-          text: '今日時点の楽天カード利用金額通知',
+          text: `${Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'MM/dd')} 時点の楽天カード利用金額通知`,
           weight: 'bold',
           size: 'md',
           margin: 'none',
