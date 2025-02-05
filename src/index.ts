@@ -1,7 +1,8 @@
-import { processEmails } from './main';
+import { processEmails, sample } from './main'
 
 declare const global: {
-  [x: string]: unknown;
-};
+  [x: string]: unknown
+}
 
-global.main = processEmails;
+global.main = processEmails
+global.sample = sample

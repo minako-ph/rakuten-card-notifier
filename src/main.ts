@@ -9,11 +9,11 @@ const LABEL_NAME = '通知処理済み'
 export const processEmails = () => {
   // 速報版と確定版のメールをそれぞれ検索
   const notificationThreads = GmailApp.search(
-    `from:(@mail.rakuten-card.co.jp) after:2025/01/01 subject:【速報版】カード利用のお知らせ(本人ご利用分) -label:${LABEL_NAME}`,
+    `from:(@mail.rakuten-card.co.jp) after:2025/02/01 subject:【速報版】カード利用のお知らせ(本人ご利用分) -label:${LABEL_NAME}`,
   )
 
   const confirmedThreads = GmailApp.search(
-    `from:(@mail.rakuten-card.co.jp) after:2025/01/01 subject:カード利用のお知らせ(本人ご利用分) -label:${LABEL_NAME}`,
+    `from:(@mail.rakuten-card.co.jp) after:2025/02/01 subject:カード利用のお知らせ(本人ご利用分) -label:${LABEL_NAME}`,
   )
 
   const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('利用履歴')
@@ -74,28 +74,34 @@ const parseEmailBodyForDetails = (
   const decodedBody = decodeISO2022JP(body)
 
   const details: { date: string; amount: string; place: string }[] = []
-  let detailBlockRegex: RegExp
 
-  // 速報版と確定版で正規表現を切り替える
-  if (confirmed) {
-    // 確定版メール用の正規表現
-    detailBlockRegex =
-      /■利用日:\s*(\d{4}\/\d{2}\/\d{2})[\s\S]*?■利用先:\s*(.+?)[\s\S]*?■利用金額:\s*([\d,]+)\s*円/g
-  } else {
-    // 速報版メール用の正規表現
-    detailBlockRegex =
-      /■利用日:\s*(\d{4}\/\d{2}\/\d{2})[\s\S]*?■利用金額:\s*([\d,]+)\s*円/g
-  }
+  // 速報版用の正規表現（利用日・利用金額）
+  const notificationPattern =
+    /■利用日:\s*(\d{4}\/\d{2}\/\d{2})\s*■利用者:\s*本人\s*■利用金額:\s*([\d,]+)\s*円/g
+
+  // 確定版用の正規表現（利用日・利用金額・利用先）
+  const confirmedPattern =
+    /■利用日:\s*(\d{4}\/\d{2}\/\d{2})\s*■利用先:\s*([^\n\r]+)\s*■利用者:\s*本人\s*■支払方法:\s*[^\n\r]+\s*■利用金額:\s*([\d,]+)\s*円/g
 
   let match: RegExpExecArray | null
 
-  // 明細の塊を解析
-  while ((match = detailBlockRegex.exec(decodedBody)) !== null) {
-    const date = match[1]
-    const amount = match[confirmed ? 3 : 2].replace(/,/g, '') // カンマを削除して数値化
-    const place = confirmed ? match[2].trim() : '' // 確定版のみ利用先を設定
+  if (confirmed) {
+    // 確定版メールの解析
+    while ((match = confirmedPattern.exec(decodedBody)) !== null) {
+      const date = match[1]
+      const place = match[2].trim()
+      const amount = match[3].replace(/,/g, '') // カンマを削除
 
-    details.push({ date, amount, place })
+      details.push({ date, amount, place })
+    }
+  } else {
+    // 速報版メールの解析
+    while ((match = notificationPattern.exec(decodedBody)) !== null) {
+      const date = match[1]
+      const amount = match[2].replace(/,/g, '') // カンマを削除
+
+      details.push({ date, amount, place: '' }) // 速報版は利用先なし
+    }
   }
 
   return details
@@ -346,5 +352,237 @@ const sendNotificationToLine = (
       contents: flexContents,
     },
   ]
+  sendPushMessage(messages)
+}
+
+export const sample = () => {
+  const flexContents = {
+    type: 'bubble',
+    body: {
+      type: 'box',
+      layout: 'vertical',
+      contents: [
+        {
+          type: 'text',
+          text: '今日時点の楽天カード利用金額通知',
+          weight: 'bold',
+          size: 'md',
+          margin: 'none',
+        },
+        {
+          type: 'separator',
+          margin: 'xxl',
+        },
+        {
+          type: 'text',
+          text: '速報通知',
+          margin: 'xxl',
+          weight: 'bold',
+        },
+        {
+          type: 'box',
+          layout: 'vertical',
+          contents: [
+            {
+              type: 'box',
+              layout: 'horizontal',
+              contents: [
+                {
+                  type: 'text',
+                  text: '2025/01/22',
+                },
+                {
+                  type: 'text',
+                  text: '3,250 円',
+                  align: 'end',
+                },
+              ],
+            },
+            {
+              type: 'box',
+              layout: 'horizontal',
+              contents: [
+                {
+                  type: 'text',
+                  text: '2025/01/23',
+                },
+                {
+                  type: 'text',
+                  text: '1,610 円',
+                  align: 'end',
+                },
+              ],
+            },
+          ],
+          margin: 'md',
+        },
+        {
+          type: 'text',
+          text: '今月の利用金額合計',
+          margin: 'xxl',
+          weight: 'bold',
+        },
+        {
+          type: 'text',
+          text: '143,235 円',
+          align: 'end',
+          margin: 'md',
+        },
+        {
+          type: 'text',
+          text: '今月の利用可能金額消化率',
+          margin: 'xxl',
+          weight: 'bold',
+        },
+        {
+          type: 'box',
+          layout: 'vertical',
+          contents: [
+            {
+              type: 'box',
+              layout: 'vertical',
+              contents: [
+                {
+                  type: 'box',
+                  layout: 'horizontal',
+                  contents: [
+                    {
+                      type: 'text',
+                      text: '20万円の場合',
+                      margin: 'sm',
+                      weight: 'bold',
+                      size: 'sm',
+                    },
+                    {
+                      type: 'text',
+                      text: '72% 消化済み',
+                      align: 'end',
+                    },
+                  ],
+                },
+                {
+                  type: 'text',
+                  text: '残 56,765 円',
+                  align: 'end',
+                },
+              ],
+              spacing: 'sm',
+              margin: 'sm',
+            },
+            {
+              type: 'box',
+              layout: 'vertical',
+              contents: [
+                {
+                  type: 'box',
+                  layout: 'horizontal',
+                  contents: [
+                    {
+                      type: 'text',
+                      text: '30万円の場合',
+                      margin: 'sm',
+                      weight: 'bold',
+                      size: 'sm',
+                    },
+                    {
+                      type: 'text',
+                      text: '48% 消化済み',
+                      align: 'end',
+                    },
+                  ],
+                },
+                {
+                  type: 'text',
+                  text: '残 156,765 円',
+                  align: 'end',
+                },
+              ],
+            },
+          ],
+          margin: 'md',
+          spacing: 'sm',
+        },
+        {
+          type: 'separator',
+          margin: 'xxl',
+        },
+        {
+          type: 'text',
+          text: '確定通知',
+          margin: 'xxl',
+          weight: 'bold',
+        },
+        {
+          type: 'box',
+          layout: 'vertical',
+          contents: [
+            {
+              type: 'box',
+              layout: 'vertical',
+              contents: [
+                {
+                  type: 'box',
+                  layout: 'horizontal',
+                  contents: [
+                    {
+                      type: 'text',
+                      text: '2025/01/19',
+                    },
+                    {
+                      type: 'text',
+                      text: '850 円',
+                      align: 'end',
+                    },
+                  ],
+                },
+                {
+                  type: 'text',
+                  text: 'ｻﾝﾌﾟﾙｺﾝﾋﾞﾆ',
+                  align: 'end',
+                },
+              ],
+            },
+            {
+              type: 'box',
+              layout: 'vertical',
+              contents: [
+                {
+                  type: 'box',
+                  layout: 'horizontal',
+                  contents: [
+                    {
+                      type: 'text',
+                      text: '2025/01/20',
+                    },
+                    {
+                      type: 'text',
+                      text: '2,310 円',
+                      align: 'end',
+                    },
+                  ],
+                },
+                {
+                  type: 'text',
+                  text: 'ｻﾝﾌﾟﾙﾁｮｳｻﾞｲﾔｯｷｮｸ',
+                  align: 'end',
+                },
+              ],
+            },
+          ],
+          margin: 'sm',
+          spacing: 'sm',
+        },
+      ],
+    },
+  }
+
+  const messages = [
+    {
+      type: 'flex',
+      altText: '楽天カード利用通知',
+      contents: flexContents,
+    },
+  ]
+
   sendPushMessage(messages)
 }
