@@ -209,7 +209,7 @@ const sendNotificationToLine = (
               { type: 'text', text: entry.date },
               {
                 type: 'text',
-                text: `${entry.amount.toLocaleString()} 円`,
+                text: `${Number(entry.amount).toLocaleString()} 円`,
                 align: 'end',
               },
             ],
@@ -224,7 +224,7 @@ const sendNotificationToLine = (
         },
         {
           type: 'text',
-          text: `${totalAmount.toLocaleString()} 円`,
+          text: `${Number(totalAmount).toLocaleString()} 円`,
           align: 'end',
           margin: 'md',
         },
@@ -326,7 +326,7 @@ const sendNotificationToLine = (
                   { type: 'text', text: entry.date },
                   {
                     type: 'text',
-                    text: `${entry.amount.toLocaleString()} 円`,
+                    text: `${Number(entry.amount).toLocaleString()} 円`,
                     align: 'end',
                   },
                 ],
