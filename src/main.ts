@@ -7,13 +7,22 @@ const LABEL_NAME = '通知処理済み'
  * メール処理のメインロジック
  */
 export const processEmails = () => {
+  // 今月の頭を取得
+  const now = new Date()
+  const firstDayOfMonth = new Date(now.getFullYear(), now.getMonth(), 1)
+  const formattedDate = Utilities.formatDate(
+    firstDayOfMonth,
+    Session.getScriptTimeZone(),
+    'yyyy/MM/dd',
+  )
+
   // 速報版と確定版のメールをそれぞれ検索
   const notificationThreads = GmailApp.search(
-    `from:(@mail.rakuten-card.co.jp) after:2025/02/01 subject:【速報版】カード利用のお知らせ(本人ご利用分) -label:${LABEL_NAME}`,
+    `from:(@mail.rakuten-card.co.jp) after:${formattedDate} subject:【速報版】カード利用のお知らせ(本人ご利用分) -label:${LABEL_NAME}`,
   )
 
   const confirmedThreads = GmailApp.search(
-    `from:(@mail.rakuten-card.co.jp) after:2025/02/01 subject:カード利用のお知らせ(本人ご利用分) -label:${LABEL_NAME}`,
+    `from:(@mail.rakuten-card.co.jp) after:${formattedDate} subject:カード利用のお知らせ(本人ご利用分) -label:${LABEL_NAME}`,
   )
 
   const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('利用履歴')
