@@ -257,21 +257,21 @@ const sendNotificationToLine = (
                   contents: [
                     {
                       type: 'text',
-                      text: '30万円の場合',
+                      text: '20万円の場合',
                       margin: 'sm',
                       weight: 'bold',
                       size: 'sm',
                     },
                     {
                       type: 'text',
-                      text: `${Math.round((totalAmount / 300000) * 100).toLocaleString()}% 消化済み`,
+                      text: `${Math.round((totalAmount / 200000) * 100).toLocaleString()}% 消化済み`,
                       align: 'end',
                     },
                   ],
                 },
                 {
                   type: 'text',
-                  text: `残 ${(300000 - totalAmount).toLocaleString()} 円`,
+                  text: `残 ${(200000 - totalAmount).toLocaleString()} 円`,
                   align: 'end',
                 },
               ],
@@ -288,21 +288,21 @@ const sendNotificationToLine = (
                   contents: [
                     {
                       type: 'text',
-                      text: '40万円の場合',
+                      text: '30万円の場合',
                       margin: 'sm',
                       weight: 'bold',
                       size: 'sm',
                     },
                     {
                       type: 'text',
-                      text: `${Math.round((totalAmount / 400000) * 100).toLocaleString()}% 消化済み`,
+                      text: `${Math.round((totalAmount / 300000) * 100).toLocaleString()}% 消化済み`,
                       align: 'end',
                     },
                   ],
                 },
                 {
                   type: 'text',
-                  text: `残 ${(400000 - totalAmount).toLocaleString()} 円`,
+                  text: `残 ${(300000 - totalAmount).toLocaleString()} 円`,
                   align: 'end',
                 },
               ],
