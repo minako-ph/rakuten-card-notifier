@@ -167,10 +167,15 @@ const calculateTotal = (
   indexMap: Record<string, number>,
 ): number => {
   const data = sheet.getDataRange().getValues()
-  const currentMonth = new Date().getMonth() + 1
+  const now = new Date()
+  const currentYear = now.getFullYear()
+  const currentMonth = now.getMonth() + 1
   return data.slice(1).reduce((sum, row) => {
     const date = new Date(row[indexMap['利用日']])
-    if (date.getMonth() + 1 === currentMonth) {
+    if (
+      date.getFullYear() === currentYear &&
+      date.getMonth() + 1 === currentMonth
+    ) {
       return sum + row[indexMap['利用金額']]
     }
     return sum
