@@ -1,5 +1,12 @@
-import { getColumnIndexMap, appendRow } from './spreadsheet'
+import {
+  createUsage,
+  queryUsagesSince,
+  updateUsage,
+  UsageEntry,
+} from './notion'
+import { saveNotification } from './notifications'
 import { sendPushMessage } from './line'
+import { buildNotificationMessage, NotificationEntry } from './flex'
 
 const LABEL_NAME = '通知処理済み'
 
@@ -9,10 +16,11 @@ const LABEL_NAME = '通知処理済み'
 export const processEmails = () => {
   // 今月の頭を取得
   const now = new Date()
+  const timeZone = Session.getScriptTimeZone()
   const firstDayOfMonth = new Date(now.getFullYear(), now.getMonth(), 1)
   const formattedDate = Utilities.formatDate(
     firstDayOfMonth,
-    Session.getScriptTimeZone(),
+    timeZone,
     'yyyy/MM/dd',
   )
 
@@ -25,13 +33,14 @@ export const processEmails = () => {
     `from:(@mail.rakuten-card.co.jp) after:${formattedDate} subject:カード利用のお知らせ(本人ご利用分) -label:${LABEL_NAME}`,
   )
 
-  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('利用履歴')
-  if (!sheet) throw new Error('Sheet not found')
+  // 先月以降の明細を Notion から取得（月初に届く前月分の確定版と突き合わせるため先月分も含める）
+  const firstDayOfPrevMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1)
+  const usages = queryUsagesSince(
+    Utilities.formatDate(firstDayOfPrevMonth, timeZone, 'yyyy-MM-dd'),
+  )
 
-  const indexMap = getColumnIndexMap(sheet)
-
-  const notificationEntries: any[] = []
-  const confirmedEntries: any[] = []
+  const notificationEntries: NotificationEntry[] = []
+  const confirmedEntries: UsageEntry[] = []
 
   // 速報版メールの処理
   notificationThreads.forEach((thread) => {
@@ -40,7 +49,8 @@ export const processEmails = () => {
       const body = message.getPlainBody()
       const details = parseEmailBodyForDetails(body, false) // 明細をすべて抽出
       details.forEach(({ date, amount }) => {
-        appendRow(sheet, [date, '', amount])
+        const pageId = createUsage({ date, amount, place: '' })
+        usages.push({ pageId, date, amount, place: '', category: '' })
         notificationEntries.push({ date, amount })
       })
     })
@@ -56,11 +66,21 @@ export const processEmails = () => {
       const body = message.getPlainBody()
       const details = parseEmailBodyForDetails(body, true) // 明細をすべて抽出
       details.forEach(({ date, amount, place }) => {
-        const updated = updateConfirmedRow(sheet, date, amount, place, indexMap)
-        if (!updated) {
-          appendRow(sheet, [date, place, amount])
+        // 速報版で登録済み（利用先が空）の明細があればそれを更新、なければ新規追加
+        const target = usages.find(
+          (usage) =>
+            usage.date === date && usage.amount === amount && !usage.place,
+        )
+        if (target) {
+          updateUsage(target.pageId, { place })
+          target.place = place
+          confirmedEntries.push(target)
+        } else {
+          const pageId = createUsage({ date, amount, place })
+          const entry = { pageId, date, amount, place, category: '' }
+          usages.push(entry)
+          confirmedEntries.push(entry)
         }
-        confirmedEntries.push({ date, amount, place })
       })
     })
 
@@ -68,8 +88,18 @@ export const processEmails = () => {
     thread.addLabel(GmailApp.getUserLabelByName(LABEL_NAME))
   })
 
-  const totalAmount = calculateTotal(sheet, indexMap)
-  sendNotificationToLine(notificationEntries, confirmedEntries, totalAmount)
+  const totalAmount = calculateTotal(usages, now)
+  const notifId = saveNotification(
+    confirmedEntries.map((entry) => entry.pageId),
+  )
+  sendPushMessage([
+    buildNotificationMessage(
+      notificationEntries,
+      confirmedEntries,
+      totalAmount,
+      notifId,
+    ),
+  ])
 }
 
 /**
@@ -78,11 +108,11 @@ export const processEmails = () => {
 const parseEmailBodyForDetails = (
   body: string,
   confirmed: boolean,
-): { date: string; amount: string; place: string }[] => {
+): { date: string; amount: number; place: string }[] => {
   // 本文のデコード（ISO-2022-JP対応）
   const decodedBody = decodeISO2022JP(body)
 
-  const details: { date: string; amount: string; place: string }[] = []
+  const details: { date: string; amount: number; place: string }[] = []
 
   // 速報版用の正規表現（利用日・利用金額）
   const notificationPattern =
@@ -97,17 +127,17 @@ const parseEmailBodyForDetails = (
   if (confirmed) {
     // 確定版メールの解析
     while ((match = confirmedPattern.exec(decodedBody)) !== null) {
-      const date = match[1]
+      const date = toIsoDate(match[1])
       const place = match[2].trim()
-      const amount = match[3].replace(/,/g, '') // カンマを削除
+      const amount = parseAmount(match[3])
 
       details.push({ date, amount, place })
     }
   } else {
     // 速報版メールの解析
     while ((match = notificationPattern.exec(decodedBody)) !== null) {
-      const date = match[1]
-      const amount = match[2].replace(/,/g, '') // カンマを削除
+      const date = toIsoDate(match[1])
+      const amount = parseAmount(match[2])
 
       details.push({ date, amount, place: '' }) // 速報版は利用先なし
     }
@@ -115,6 +145,12 @@ const parseEmailBodyForDetails = (
 
   return details
 }
+
+/** yyyy/MM/dd → yyyy-MM-dd（Notion の日付形式） */
+const toIsoDate = (date: string) => date.replace(/\//g, '-')
+
+/** "1,234" → 1234 */
+const parseAmount = (amount: string) => Number(amount.replace(/,/g, ''))
 
 /**
  * ISO-2022-JPをUTF-8にデコードする関数
@@ -125,246 +161,18 @@ const decodeISO2022JP = (input: string): string => {
 }
 
 /**
- * 確定版メールでスプレッドシートを更新
+ * 今月の利用金額合計を計算
  */
-const updateConfirmedRow = (
-  sheet: GoogleAppsScript.Spreadsheet.Sheet,
-  date: string,
-  amount: string,
-  place: string,
-  indexMap: Record<string, number>,
-): boolean => {
-  const data = sheet.getDataRange().getValues()
-
-  for (let i = 1; i < data.length; i++) {
-    // 日付をISO形式（YYYY-MM-DD）に統一
-    const sheetDate = new Date(data[i][indexMap['利用日']])
-      .toISOString()
-      .split('T')[0]
-    const targetDate = new Date(date).toISOString().split('T')[0]
-
-    // 金額を文字列に統一
-    const sheetAmount = String(data[i][indexMap['利用金額']])
-    const targetAmount = String(amount)
-
-    if (
-      sheetDate === targetDate &&
-      sheetAmount === targetAmount &&
-      !data[i][indexMap['利用先']]
-    ) {
-      sheet.getRange(i + 1, indexMap['利用先'] + 1).setValue(place)
-      return true
-    }
-  }
-  return false
-}
-
-/**
- * スプレッドシートから今月の利用金額合計を計算
- */
-const calculateTotal = (
-  sheet: GoogleAppsScript.Spreadsheet.Sheet,
-  indexMap: Record<string, number>,
-): number => {
-  const data = sheet.getDataRange().getValues()
-  const now = new Date()
-  const currentYear = now.getFullYear()
-  const currentMonth = now.getMonth() + 1
-  return data.slice(1).reduce((sum, row) => {
-    const date = new Date(row[indexMap['利用日']])
-    if (
-      date.getFullYear() === currentYear &&
-      date.getMonth() + 1 === currentMonth
-    ) {
-      return sum + row[indexMap['利用金額']]
+const calculateTotal = (usages: UsageEntry[], now: Date): number => {
+  const currentMonth = Utilities.formatDate(
+    now,
+    Session.getScriptTimeZone(),
+    'yyyy-MM',
+  )
+  return usages.reduce((sum, usage) => {
+    if (usage.date.indexOf(currentMonth) === 0) {
+      return sum + usage.amount
     }
     return sum
   }, 0)
-}
-
-/**
- * LINE通知を送信
- */
-const sendNotificationToLine = (
-  notificationEntries: any[],
-  confirmedEntries: any[],
-  totalAmount: number,
-) => {
-  const flexContents = {
-    type: 'bubble',
-    body: {
-      type: 'box',
-      layout: 'vertical',
-      contents: [
-        {
-          type: 'text',
-          text: `${Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'MM/dd')} 時点の楽天カード利用金額通知`,
-          weight: 'bold',
-          size: 'md',
-          margin: 'none',
-        },
-        {
-          type: 'separator',
-          margin: 'xxl',
-        },
-        {
-          type: 'text',
-          text: '速報通知',
-          margin: 'xxl',
-          weight: 'bold',
-        },
-        {
-          type: 'box',
-          layout: 'vertical',
-          contents: notificationEntries.map((entry) => ({
-            type: 'box',
-            layout: 'horizontal',
-            contents: [
-              { type: 'text', text: entry.date },
-              {
-                type: 'text',
-                text: `${Number(entry.amount).toLocaleString()} 円`,
-                align: 'end',
-              },
-            ],
-          })),
-          margin: 'md',
-        },
-        {
-          type: 'text',
-          text: '今月の利用金額合計',
-          margin: 'xxl',
-          weight: 'bold',
-        },
-        {
-          type: 'text',
-          text: `${Number(totalAmount).toLocaleString()} 円`,
-          align: 'end',
-          margin: 'md',
-        },
-        {
-          type: 'text',
-          text: '今月の利用可能金額消化率',
-          margin: 'xxl',
-          weight: 'bold',
-        },
-        {
-          type: 'box',
-          layout: 'vertical',
-          contents: [
-            {
-              type: 'box',
-              layout: 'vertical',
-              contents: [
-                {
-                  type: 'box',
-                  layout: 'horizontal',
-                  contents: [
-                    {
-                      type: 'text',
-                      text: '20万円の場合',
-                      margin: 'sm',
-                      weight: 'bold',
-                      size: 'sm',
-                    },
-                    {
-                      type: 'text',
-                      text: `${Math.round((totalAmount / 200000) * 100).toLocaleString()}% 消化済み`,
-                      align: 'end',
-                    },
-                  ],
-                },
-                {
-                  type: 'text',
-                  text: `残 ${(200000 - totalAmount).toLocaleString()} 円`,
-                  align: 'end',
-                },
-              ],
-              spacing: 'sm',
-              margin: 'sm',
-            },
-            {
-              type: 'box',
-              layout: 'vertical',
-              contents: [
-                {
-                  type: 'box',
-                  layout: 'horizontal',
-                  contents: [
-                    {
-                      type: 'text',
-                      text: '30万円の場合',
-                      margin: 'sm',
-                      weight: 'bold',
-                      size: 'sm',
-                    },
-                    {
-                      type: 'text',
-                      text: `${Math.round((totalAmount / 300000) * 100).toLocaleString()}% 消化済み`,
-                      align: 'end',
-                    },
-                  ],
-                },
-                {
-                  type: 'text',
-                  text: `残 ${(300000 - totalAmount).toLocaleString()} 円`,
-                  align: 'end',
-                },
-              ],
-            },
-          ],
-          margin: 'md',
-          spacing: 'sm',
-        },
-        {
-          type: 'separator',
-          margin: 'xxl',
-        },
-        {
-          type: 'text',
-          text: '確定通知',
-          margin: 'xxl',
-          weight: 'bold',
-        },
-        {
-          type: 'box',
-          layout: 'vertical',
-          contents: confirmedEntries.map((entry) => ({
-            type: 'box',
-            layout: 'vertical',
-            contents: [
-              {
-                type: 'box',
-                layout: 'horizontal',
-                contents: [
-                  { type: 'text', text: entry.date },
-                  {
-                    type: 'text',
-                    text: `${Number(entry.amount).toLocaleString()} 円`,
-                    align: 'end',
-                  },
-                ],
-              },
-              {
-                type: 'text',
-                text: entry.place,
-                align: 'end',
-              },
-            ],
-          })),
-          margin: 'sm',
-          spacing: 'sm',
-        },
-      ],
-    },
-  }
-
-  const messages = [
-    {
-      type: 'flex',
-      altText: '楽天カード利用通知',
-      contents: flexContents,
-    },
-  ]
-  sendPushMessage(messages)
 }
