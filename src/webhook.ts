@@ -1,12 +1,22 @@
 import { sendReplyMessage, USER_ID } from './line'
-import { getCategoryOptions, getUsage, updateUsage } from './notion'
+import {
+  getCategoryOptions,
+  getUsage,
+  queryUsagesSince,
+  updateUsage,
+} from './notion'
 import {
   loadNotification,
   setPendingInput,
   takePendingInput,
 } from './notifications'
 import { parsePostbackData, PostbackData } from './postback'
-import { buildCategoryPickerMessage, buildConfirmedListMessage } from './flex'
+import {
+  buildBreakdownMessage,
+  buildCategoryPickerMessage,
+  buildConfirmedListMessage,
+  CategoryBreakdown,
+} from './flex'
 
 /**
  * LINE Webhook の受け口（GAS Web アプリ）
@@ -73,7 +83,49 @@ const handlePostback = (replyToken: string, data: PostbackData) => {
       ])
       return
     }
+    case 'breakdown': {
+      sendReplyMessage(replyToken, [buildMonthlyBreakdownMessage()])
+      return
+    }
   }
+}
+
+/**
+ * 今月分の明細を支出カテゴリごとに集計し、合計の大きい順に並べたメッセージを作る
+ */
+const buildMonthlyBreakdownMessage = () => {
+  const now = new Date()
+  const timeZone = Session.getScriptTimeZone()
+  const month = Utilities.formatDate(now, timeZone, 'yyyy-MM')
+  const entries = queryUsagesSince(`${month}-01`).filter(
+    (entry) => entry.date.indexOf(month) === 0,
+  )
+
+  const groups: Record<string, CategoryBreakdown> = {}
+  entries.forEach((entry) => {
+    const category = entry.category || '未分類'
+    if (!groups[category]) {
+      groups[category] = { category, total: 0, entries: [] }
+    }
+    groups[category].total += entry.amount
+    groups[category].entries.push(entry)
+  })
+
+  const breakdown = Object.keys(groups)
+    .map((category) => groups[category])
+    .sort((a, b) => b.total - a.total)
+  breakdown.forEach((group) =>
+    group.entries.sort((a, b) =>
+      a.date < b.date ? -1 : a.date > b.date ? 1 : 0,
+    ),
+  )
+  const totalAmount = entries.reduce((sum, entry) => sum + entry.amount, 0)
+
+  return buildBreakdownMessage(
+    Utilities.formatDate(now, timeZone, 'M月'),
+    breakdown,
+    totalAmount,
+  )
 }
 
 const handleTextMessage = (replyToken: string, text: string) => {

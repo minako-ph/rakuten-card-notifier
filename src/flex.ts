@@ -268,10 +268,142 @@ export const buildNotificationMessage = (
           weight: 'bold',
         },
         confirmedList(confirmedEntries, notifId),
+        {
+          type: 'box',
+          layout: 'vertical',
+          margin: 'xxl',
+          contents: [
+            label(
+              'カテゴリ別の内訳を見る',
+              LABEL_STYLE.add,
+              {
+                type: 'postback',
+                label: 'カテゴリ別の内訳',
+                data: buildPostbackData({ action: 'breakdown' }),
+              },
+              1,
+            ),
+          ],
+        },
       ],
     },
   }
   return flexMessage('楽天カード利用通知', bubble)
+}
+
+export type CategoryBreakdown = {
+  category: string
+  total: number
+  entries: UsageEntry[]
+}
+
+/**
+ * 今月分のカテゴリ別内訳のメッセージ
+ * @param monthLabel 見出しに出す月（例: 11月）
+ * @param breakdown 合計金額の大きい順に並んだカテゴリ別の明細
+ */
+export const buildBreakdownMessage = (
+  monthLabel: string,
+  breakdown: CategoryBreakdown[],
+  totalAmount: number,
+) => {
+  const sections: object[] = breakdown.map((group) => ({
+    type: 'box',
+    layout: 'vertical',
+    margin: 'xl',
+    spacing: 'sm',
+    contents: [
+      {
+        type: 'box',
+        layout: 'horizontal',
+        alignItems: 'center',
+        contents: [
+          label(group.category, LABEL_STYLE.selected),
+          {
+            type: 'text',
+            text: formatAmount(group.total),
+            align: 'end',
+            weight: 'bold',
+          },
+        ],
+      },
+      ...group.entries.map((entry) => ({
+        type: 'box',
+        layout: 'horizontal',
+        spacing: 'sm',
+        contents: [
+          {
+            type: 'text',
+            text: entry.place || '-',
+            size: 'sm',
+            flex: 3,
+            wrap: true,
+          },
+          {
+            type: 'text',
+            text: formatAmount(entry.amount),
+            size: 'sm',
+            align: 'end',
+            flex: 2,
+          },
+          {
+            type: 'text',
+            text: entry.date.slice(5).replace(/-/g, '/'),
+            size: 'xs',
+            color: '#888888',
+            align: 'end',
+            flex: 1,
+          },
+        ],
+      })),
+    ],
+  }))
+
+  if (sections.length === 0) {
+    sections.push({
+      type: 'text',
+      text: '今月の利用明細はありません',
+      margin: 'xl',
+      color: '#888888',
+    })
+  }
+
+  const bubble = {
+    type: 'bubble',
+    body: {
+      type: 'box',
+      layout: 'vertical',
+      contents: [
+        {
+          type: 'text',
+          text: `${monthLabel}のカテゴリ別内訳`,
+          weight: 'bold',
+          size: 'md',
+          margin: 'none',
+        },
+        {
+          type: 'box',
+          layout: 'horizontal',
+          margin: 'md',
+          contents: [
+            { type: 'text', text: '合計', size: 'sm' },
+            {
+              type: 'text',
+              text: formatAmount(totalAmount),
+              align: 'end',
+              size: 'sm',
+            },
+          ],
+        },
+        {
+          type: 'separator',
+          margin: 'xl',
+        },
+        ...sections,
+      ],
+    },
+  }
+  return flexMessage(`${monthLabel}のカテゴリ別内訳`, bubble)
 }
 
 /**
