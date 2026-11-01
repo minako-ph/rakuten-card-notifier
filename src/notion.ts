@@ -4,6 +4,8 @@ const NOTION_DATABASE_ID = prop.NOTION_DATABASE_ID
 
 const NOTION_API_BASE = 'https://api.notion.com/v1'
 const NOTION_VERSION = '2022-06-28'
+// 一時的なネットワークエラー・レート制限時のリトライ回数
+const MAX_ATTEMPTS = 3
 
 /**
  * Notion データベースのプロパティ名
@@ -46,13 +48,29 @@ const request = (
   }
   if (payload) options.payload = JSON.stringify(payload)
 
-  const response = UrlFetchApp.fetch(`${NOTION_API_BASE}${path}`, options)
-  const code = response.getResponseCode()
-  const body = response.getContentText()
-  if (code < 200 || code >= 300) {
-    throw new Error(`Notion API error ${code} ${method} ${path}: ${body}`)
+  const url = `${NOTION_API_BASE}${path}`
+  let lastError: unknown
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    if (attempt > 1) Utilities.sleep(1000 * (attempt - 1))
+
+    let response: GoogleAppsScript.URL_Fetch.HTTPResponse
+    try {
+      response = UrlFetchApp.fetch(url, options)
+    } catch (error) {
+      // GAS の UrlFetchApp は一時的なネットワークエラーで例外（使用できないアドレス 等）を投げることがある
+      lastError = error
+      continue
+    }
+
+    const code = response.getResponseCode()
+    const body = response.getContentText()
+    if (code >= 200 && code < 300) return JSON.parse(body)
+
+    lastError = new Error(`Notion API error ${code} ${method} ${path}: ${body}`)
+    // レート制限・サーバーエラー以外はリトライしない
+    if (code !== 429 && code < 500) throw lastError
   }
-  return JSON.parse(body)
+  throw lastError
 }
 
 /**
